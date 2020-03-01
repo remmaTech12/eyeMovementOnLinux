@@ -9,6 +9,10 @@ STRAIGHT = 0
 LEFT = 1
 RIGHT = 2
 
+def mosaic(src, ratio=0.1):
+    small = cv2.resize(src, None, fx=ratio, fy=ratio, interpolation=cv2.INTER_NEAREST)
+    return cv2.resize(small, src.shape[:2][::-1], interpolation=cv2.INTER_NEAREST)
+
 def get_center(gray_img):
     moments = cv2.moments(gray_img, False)
     try:
@@ -57,6 +61,16 @@ def get_eye_parts(parts, left):
         return None
     else:
         return eye_parts
+
+def get_eye_image(img, parts, left=True):
+    eye_parts = get_eye_parts(parts, left)
+    if eye_parts == None:
+        return None, None
+
+    eye_img = img[eye_parts[1].y:eye_parts[2].y, eye_parts[0].x:eye_parts[3].x]
+    eye_img = mosaic(eye_img, 0.4)
+
+    return eye_parts, eye_img
 
 def get_eye_center(img, parts, left=True):
     eye_parts = get_eye_parts(parts, left)
@@ -108,12 +122,29 @@ def is_face_moving(parts_pre, parts):
     else:
         return False
 
-def show_img(img, parts, eye):
+def show_text(img, direction):
+    img = cv2.rectangle(img,(0,0),(200,50),(255,255,255),-1)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    text_arr = ['STRAIGHT', 'LEFT', 'RIGHT']
+    
+    cv2.putText(img,text_arr[direction], (0,35), font, 1, (0,0,0), 2, cv2.LINE_AA, False)
+
+def show_image(img, parts, eye, direction):
     for i in range(2):
         cv2.circle(img, eye[i], 3, (255, 255, 0), -1)
 
     for i in parts:
         cv2.circle(img, (i.x, i.y), 3, (255, 0, 0), -1)
+
+    show_text(img, direction)
+
+    left_eye_parts, left_eye_img = get_eye_image(frame, parts)
+    if left_eye_parts != None:
+        img[left_eye_parts[1].y:left_eye_parts[2].y, left_eye_parts[0].x:left_eye_parts[3].x] = left_eye_img
+
+    right_eye_parts, right_eye_img = get_eye_image(frame, parts, False)
+    if right_eye_parts != None:
+        img[right_eye_parts[1].y:right_eye_parts[2].y, right_eye_parts[0].x:right_eye_parts[3].x] = right_eye_img
 
     cv2.imshow("me", img)
 
@@ -127,22 +158,26 @@ while True:
     if len(dets) > 0:
         parts = predictor(frame, dets[0]).parts()
 
-        if count > 1: 
+        direction = STRAIGHT
+        if count > 1:
             face_moving = is_face_moving(parts_pre, parts)
         else:
-            face_moving = False    
+            face_moving = False
 
         if face_moving != True:
             if eye_moving_direction(frame, parts) == LEFT and eye_moving_direction(frame, parts, False) == LEFT:
+                direction = LEFT
                 print('Eye movement to the LEFT')
             if eye_moving_direction(frame, parts) == RIGHT and eye_moving_direction(frame, parts, False) == RIGHT:
+                direction = RIGHT
                 print('Eye movement to the RIGHT')
             if eye_moving_direction(frame, parts) == RIGHT and eye_moving_direction(frame, parts, False) == LEFT:
+                direction = STRAIGHT
                 print('Eye CROSSING movement is detected!!')
 
         left_eye = get_eye_center(frame, parts)
         right_eye = get_eye_center(frame, parts, False)
-        show_img(frame, parts, (left_eye, right_eye))
+        show_image(frame*0, parts, (left_eye, right_eye), direction)
 
         parts_pre = parts
         count = count + 1
